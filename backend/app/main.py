@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
 # Import routers
-from app.routers import streaming, auth, checklist
+from app.routers import streaming, auth, checklist, hospital
 from app.services.streaming_service import get_streaming_service
 from app.core.database import engine
 from app.models.models import Base
@@ -76,6 +76,7 @@ async def startup_event():
 app.include_router(auth.router)
 app.include_router(streaming.router)
 app.include_router(checklist.router)
+app.include_router(hospital.router)
 
 @app.get("/")
 def read_root():

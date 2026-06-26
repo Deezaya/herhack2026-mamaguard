@@ -5,8 +5,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
 # Import routers
-from app.routers import streaming
+from app.routers import streaming, auth, checklist
 from app.services.streaming_service import get_streaming_service
+from app.core.database import engine
+from app.models.models import Base
 
 # Load environment variables
 load_dotenv()
@@ -17,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="MamaGuard Backend",
-    description="Real-time vitals monitoring backend",
+    description="Real-time vitals monitoring backend for postpartum mothers",
     version="1.0.0"
 )
 
@@ -29,6 +31,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Create database tables
+try:
+    Base.metadata.create_all(bind=engine)
+    logger.info("Database tables created")
+except Exception as e:
+    logger.error(f"Failed to create database tables: {e}")
 
 # Initialize VitalLens
 def initialize_vitallens():
@@ -64,7 +73,9 @@ async def startup_event():
         raise
 
 # Include routers
+app.include_router(auth.router)
 app.include_router(streaming.router)
+app.include_router(checklist.router)
 
 @app.get("/")
 def read_root():

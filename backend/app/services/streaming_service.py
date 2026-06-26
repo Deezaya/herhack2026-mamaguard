@@ -13,12 +13,14 @@ logger = logging.getLogger(__name__)
 class StreamingSession:
     """Manages a single streaming session"""
     
-    def __init__(self, session_id: str, vitallens, process_signals: bool = True, model: Optional[str] = None):
+    def __init__(self, session_id: str, user_id: int, vitallens, db_session=None, process_signals: bool = True, model: Optional[str] = None):
         self.session_id = session_id
+        self.user_id = user_id
         self.vitallens = vitallens
+        self.db_session = db_session
         self.process_signals = process_signals
         self.model = model
-        self.created_at = datetime.now()
+        self.created_at = datetime.utcnow()
         self.last_update = None
         self.frames: List[np.ndarray] = []
         self.frame_timestamps: List[float] = []
@@ -36,7 +38,7 @@ class StreamingSession:
         try:
             self._session = self.vitallens.stream()
             self._session.__enter__()
-            logger.info(f"VitalLens streaming session started: {self.session_id}")
+            logger.info(f"VitalLens streaming session started: {self.session_id} for user {self.user_id}")
         except Exception as e:
             logger.error(f"Failed to start VitalLens stream: {e}")
             raise
@@ -72,7 +74,7 @@ class StreamingSession:
                     except Exception as e:
                         logger.debug(f"No result ready yet: {e}")
                 
-                self.last_update = datetime.now()
+                self.last_update = datetime.utcnow()
                 
                 return {
                     "status": "success",
@@ -110,7 +112,7 @@ class StreamingSession:
     def get_status(self) -> Dict:
         """Get current session status"""
         with self.lock:
-            duration = (datetime.now() - self.created_at).total_seconds()
+            duration = (datetime.utcnow() - self.created_at).total_seconds()
             return {
                 "session_id": self.session_id,
                 "frames_processed": len(self.frames),
@@ -120,7 +122,7 @@ class StreamingSession:
             }
     
     def stop(self) -> Dict:
-        """Stop the streaming session and return final vitals"""
+        """Stop the streaming session and save to database"""
         with self.lock:
             try:
                 if self._session:
@@ -134,7 +136,30 @@ class StreamingSession:
                     
                     self._session.__exit__(None, None, None)
                 
-                duration = (datetime.now() - self.created_at).total_seconds()
+                duration = (datetime.utcnow() - self.created_at).total_seconds()
+                
+                # Save to database
+                if self.db_session:
+                    try:
+                        from app.models.models import ScanSession
+                        
+                        db_scan = ScanSession(
+                            id=self.session_id,
+                            user_id=self.user_id,
+                            heart_rate=self.vitals.get("heart_rate"),
+                            hrv=self.vitals.get("respiratory_rate"),  # Note: VitalLens may not always provide HRV
+                            total_frames=len(self.frames),
+                            status="processing",  # Will be updated when checklist is submitted
+                            started_at=self.created_at,
+                            ended_at=datetime.utcnow()
+                        )
+                        
+                        self.db_session.add(db_scan)
+                        self.db_session.commit()
+                        logger.info(f"Scan session saved to database: {self.session_id}")
+                    except Exception as e:
+                        logger.error(f"Failed to save session to database: {e}")
+                        self.db_session.rollback()
                 
                 return {
                     "session_id": self.session_id,
@@ -159,20 +184,22 @@ class StreamingService:
         """Initialize with VitalLens instance"""
         self.vitallens = vitallens_instance
     
-    def create_session(self, process_signals: bool = True, model: Optional[str] = None) -> str:
+    def create_session(self, user_id: int, db_session=None, process_signals: bool = True, model: Optional[str] = None) -> str:
         """Create a new streaming session"""
         session_id = str(uuid.uuid4())
         
         with self.lock:
             session = StreamingSession(
                 session_id=session_id,
+                user_id=user_id,
                 vitallens=self.vitallens,
+                db_session=db_session,
                 process_signals=process_signals,
                 model=model
             )
             session.start_vitallens_stream()
             self.sessions[session_id] = session
-            logger.info(f"Created streaming session: {session_id}")
+            logger.info(f"Created streaming session: {session_id} for user {user_id}")
         
         return session_id
     

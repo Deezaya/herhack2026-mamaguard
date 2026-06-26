@@ -10,6 +10,10 @@ from app.schemas.streaming import (
     StreamStopResponse,
 )
 from app.services.streaming_service import get_streaming_service, StreamingService
+from app.core.database import get_db
+from app.routers.auth import get_current_user_dependency
+from app.models.models import User
+from sqlalchemy.orm import Session
 import logging
 
 logger = logging.getLogger(__name__)
@@ -25,6 +29,8 @@ def get_service() -> StreamingService:
 @router.post("/start", response_model=StreamStartResponse)
 async def start_stream(
     request: StreamStartRequest,
+    current_user: User = Depends(get_current_user_dependency),
+    db: Session = Depends(get_db),
     service: StreamingService = Depends(get_service)
 ):
     """
@@ -34,6 +40,8 @@ async def start_stream(
     """
     try:
         session_id = service.create_session(
+            user_id=current_user.id,
+            db_session=db,
             process_signals=request.process_signals,
             model=request.model
         )

@@ -22,11 +22,107 @@ Final Results
 
 ## API Reference
 
+> Note: All endpoints except `/auth/register` and `/auth/login` require a valid Bearer token in the `Authorization` header.
+>
+> Example:
+> `Authorization: Bearer <access_token>`
+>
+> Obtain the token from `/auth/login` or `/auth/register`.
+
+### Authentication
+
+#### Register User
+
+**Request:**
+```http
+POST /auth/register
+Content-Type: application/json
+
+{
+  "email": "mama@example.com",
+  "name": "Mama",
+  "phone": "08012345678",
+  "password": "SecurePassword123",
+  "gestational_history": {"prior_preeclampsia": false},
+  "known_risk_factors": {"hypertension": false},
+  "emergency_contact_name": "Family Member",
+  "emergency_contact_phone": "08087654321"
+}
+```
+
+**Response:**
+```json
+{
+  "access_token": "eyJhbGc...",
+  "token_type": "bearer",
+  "user": {
+    "id": 1,
+    "email": "mama@example.com",
+    "name": "Mama",
+    "phone": "08012345678",
+    "is_active": true,
+    "created_at": "2026-06-26T12:00:00"
+  }
+}
+```
+
+#### Login User
+
+**Request:**
+```http
+POST /auth/login
+Content-Type: application/json
+
+{
+  "email": "mama@example.com",
+  "password": "SecurePassword123"
+}
+```
+
+**Response:**
+```json
+{
+  "access_token": "eyJhbGc...",
+  "token_type": "bearer",
+  "user": {
+    "id": 1,
+    "email": "mama@example.com",
+    "name": "Mama",
+    "phone": "08012345678",
+    "is_active": true,
+    "created_at": "2026-06-26T12:00:00"
+  }
+}
+```
+
+#### Get Current Profile
+
+**Request:**
+```http
+GET /auth/me
+Authorization: Bearer <access_token>
+```
+
+**Response:**
+```json
+{
+  "id": 1,
+  "email": "mama@example.com",
+  "name": "Mama",
+  "phone": "08012345678",
+  "is_active": true,
+  "created_at": "2026-06-26T12:00:00"
+}
+```
+
+### Streaming Session Endpoints
+
 ### 1. Start Streaming Session
 
 **Request:**
 ```http
 POST /api/vitallens/stream/start
+Authorization: Bearer <access_token>
 Content-Type: application/json
 
 {
@@ -35,6 +131,267 @@ Content-Type: application/json
 }
 ```
 
+**Response:**
+```json
+{
+  "session_id": "uuid-string",
+  "status": "started",
+  "message": "Streaming session ... started"
+}
+```
+
+### 2. Process Frame
+
+**Request:**
+```http
+POST /api/vitallens/stream/process-frame
+Authorization: Bearer <access_token>
+Content-Type: application/json
+
+{
+  "session_id": "uuid-string",
+  "frame": "base64-encoded-rgb24-buffer",
+  "timestamp": 1234567890.123
+}
+```
+
+**Frame Format:**
+- Must be RGB24 (3 channels, 8-bit per channel)
+- Resolution: 40x40 pixels
+- Total size: 40 × 40 × 3 = 4,800 bytes
+- Encoded as base64 string
+
+**Response:**
+```json
+{
+  "session_id": "uuid-string",
+  "frame_number": 42,
+  "heart_rate": 72.5,
+  "heart_rate_confidence": 0.95,
+  "respiratory_rate": null,
+  "respiratory_rate_confidence": null,
+  "status": "processing"
+}
+```
+
+### 3. Get Status (Optional)
+
+**Request:**
+```http
+GET /api/vitallens/stream/status/{session_id}
+Authorization: Bearer <access_token>
+```
+
+**Response:**
+```json
+{
+  "session_id": "uuid-string",
+  "status": "active",
+  "frames_processed": 42,
+  "heart_rate": 72.5,
+  "heart_rate_confidence": 0.95,
+  "respiratory_rate": null,
+  "respiratory_rate_confidence": null,
+  "last_update": "2026-06-25T12:34:56",
+  "duration_seconds": 5.2
+}
+```
+
+### 4. Stop Streaming
+
+**Request:**
+```http
+POST /api/vitallens/stream/stop
+Authorization: Bearer <access_token>
+Content-Type: application/json
+
+{
+  "session_id": "uuid-string"
+}
+```
+
+**Response:**
+```json
+{
+  "session_id": "uuid-string",
+  "status": "stopped",
+  "frames_processed": 150,
+  "heart_rate": 73.2,
+  "heart_rate_confidence": 0.97,
+  "respiratory_rate": null,
+  "respiratory_rate_confidence": null,
+  "duration_seconds": 5.0,
+  "message": "Streaming session stopped successfully"
+}
+```
+
+### Checklist & Risk Scoring Endpoints
+
+### 5. Submit Danger-Sign Checklist
+
+**Request:**
+```http
+POST /api/scans/{session_id}/checklist
+Authorization: Bearer <access_token>
+Content-Type: application/json
+
+{
+  "severe_headache": false,
+  "blurred_vision": false,
+  "abdominal_pain": true,
+  "sudden_swelling": false,
+  "shortness_of_breath": false
+}
+```
+
+**Response:**
+```json
+{
+  "session_id": "uuid-string",
+  "danger_sign_count": 1,
+  "risk_tier": "watch",
+  "risk_score": 25.0,
+  "message": "Checklist submitted. Risk score calculated."
+}
+```
+
+### 6. Get Risk Score
+
+**Request:**
+```http
+GET /api/scans/{session_id}/risk-score
+Authorization: Bearer <access_token>
+```
+
+**Response:**
+```json
+{
+  "session_id": "uuid-string",
+  "risk_tier": "watch",
+  "risk_score": 25.0,
+  "heart_rate": 73.2,
+  "hrv": null,
+  "danger_signs_count": 1,
+  "rules_applied": {
+    "hr_status": {"status": "normal", "risk_points": 0, "message": "Normal heart rate"},
+    "hrv_status": {"status": "unknown", "risk_points": 0, "message": "HRV not available"},
+    "danger_sign_assessment": {"status": "mild", "risk_points": 10, "message": "1 danger sign reported - monitor"},
+    "tier_reason": "Watch tier due to elevated vitals or danger signs"
+  },
+  "recommendation": "⚠️ Watch carefully over the next 24 hours. Return immediately if symptoms worsen.",
+  "created_at": "2026-06-26T12:10:00"
+}
+```
+
+### 7. Get Scan Summary
+
+**Request:**
+```http
+GET /api/scans/{session_id}/summary
+Authorization: Bearer <access_token>
+```
+
+**Response:**
+```json
+{
+  "session_id": "uuid-string",
+  "total_frames": 150,
+  "heart_rate": 73.2,
+  "hrv": null,
+  "risk_tier": "watch",
+  "risk_score": 25.0,
+  "checklist": {
+    "id": 1,
+    "scan_session_id": "uuid-string",
+    "severe_headache": false,
+    "blurred_vision": false,
+    "abdominal_pain": true,
+    "sudden_swelling": false,
+    "shortness_of_breath": false,
+    "danger_sign_count": 1,
+    "created_at": "2026-06-26T12:10:00"
+  },
+  "recommendation": "⚠️ Watch carefully over the next 24 hours. Return immediately if symptoms worsen.",
+  "duration_seconds": 5.0,
+  "created_at": "2026-06-26T12:10:00"
+}
+```
+
+## Frontend Implementation
+
+### JavaScript/React Example
+
+```typescript
+// services/vitallensService.ts
+import axios from 'axios';
+
+const API_BASE = 'http://localhost:8000';
+
+export class VitallensStreamingClient {
+  private sessionId: string | null = null;
+  private accessToken: string | null = null;
+
+  setAccessToken(token: string) {
+    this.accessToken = token;
+  }
+
+  private get headers() {
+    return {
+      Authorization: this.accessToken ? `Bearer ${this.accessToken}` : undefined,
+    };
+  }
+
+  async startStreaming() {
+    const response = await axios.post(
+      `${API_BASE}/api/vitallens/stream/start`,
+      {
+        process_signals: true,
+        model: null,
+      },
+      { headers: this.headers }
+    );
+    this.sessionId = response.data.session_id;
+    return this.sessionId;
+  }
+
+  async processFrame(frameBase64: string, timestamp: number) {
+    if (!this.sessionId) {
+      throw new Error('No active session. Call startStreaming first.');
+    }
+
+    const response = await axios.post(
+      `${API_BASE}/api/vitallens/stream/process-frame`,
+      {
+        session_id: this.sessionId,
+        frame: frameBase64,
+        timestamp,
+      },
+      { headers: this.headers }
+    );
+
+    return {
+      frameNumber: response.data.frame_number,
+      heartRate: response.data.heart_rate,
+      confidence: response.data.heart_rate_confidence,
+    };
+  }
+
+  async stopStreaming() {
+    if (!this.sessionId) return null;
+
+    const response = await axios.post(
+      `${API_BASE}/api/vitallens/stream/stop`,
+      { session_id: this.sessionId },
+      { headers: this.headers }
+    );
+
+    this.sessionId = null;
+    return response.data;
+  }
+}
+```
+
+... [rest of the frontend example remains unchanged]
 **Response:**
 ```json
 {

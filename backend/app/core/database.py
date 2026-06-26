@@ -5,7 +5,7 @@ from sqlalchemy.pool import NullPool
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql://user:password@localhost/mamaguard"
+    "postgresql://neondb_owner:npg_KF6ebEHrDmw0@ep-damp-wind-at93u8jn-pooler.c-9.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
 )
 
 # For production with Neon, use NullPool to avoid connection issues

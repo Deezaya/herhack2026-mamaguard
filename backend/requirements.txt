@@ -8,5 +8,6 @@ pydantic[email]==2.5.0
 python-dotenv==1.0.0
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
-numpy==1.24.3
-opencv-python==4.8.1.78
+numpy==2.4.6
+opencv-python-headless==4.8.1.78
+vitallens==0.6.1

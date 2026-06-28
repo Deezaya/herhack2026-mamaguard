@@ -182,6 +182,7 @@ All these endpoints require `Authorization: Bearer <token>` header:
 - ✅ `PUT /auth/profile` - Update onboarding info
 - ✅ `GET /auth/me` - Get current user profile
 - ✅ `POST /api/vitallens/stream/start` - Start scanning
+- ✅ `GET /api/scans` - Get all scan sessions
 - ✅ `POST /api/scans/{session_id}/checklist` - Submit checklist
 - ✅ `GET /api/scans/{session_id}/risk-score` - Get risk assessment
 - ✅ `GET /api/scans/{session_id}/summary` - Get scan summary
@@ -1045,6 +1046,102 @@ Check the health status of the streaming service.
 ---
 
 ## Checklist & Risk Assessment Endpoints
+
+### GET /api/scans - Get All Scan Sessions
+
+Retrieve all scan sessions for the authenticated user.
+
+**URL:** `/api/scans`
+
+**Method:** `GET`
+
+**Authentication:** Required (Bearer Token)
+
+**Headers:**
+```
+Authorization: Bearer <access_token>
+```
+
+**Response (200) - Success:**
+```json
+{
+  "count": 3,
+  "sessions": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "status": "completed",
+      "heart_rate": 78.5,
+      "respiratory_rate": 18.2,
+      "hrv": 45.2,
+      "risk_score": 65.5,
+      "risk_tier": "MODERATE",
+      "total_frames": 450,
+      "started_at": "2026-06-28T10:30:00Z",
+      "ended_at": "2026-06-28T10:35:45Z"
+    },
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440001",
+      "status": "completed",
+      "heart_rate": 82.1,
+      "respiratory_rate": 19.5,
+      "hrv": 38.7,
+      "risk_score": 72.0,
+      "risk_tier": "HIGH",
+      "total_frames": 420,
+      "started_at": "2026-06-27T14:00:00Z",
+      "ended_at": "2026-06-27T14:05:30Z"
+    },
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440002",
+      "status": "processing",
+      "heart_rate": null,
+      "respiratory_rate": null,
+      "hrv": null,
+      "risk_score": null,
+      "risk_tier": null,
+      "total_frames": 0,
+      "started_at": "2026-06-28T15:20:00Z",
+      "ended_at": null
+    }
+  ]
+}
+```
+
+**Response Parameters:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| count | integer | Total number of sessions |
+| sessions | array | List of scan session objects |
+| sessions[].id | string | Unique session ID (UUID) |
+| sessions[].status | string | Session status: "processing", "completed", "error" |
+| sessions[].heart_rate | float or null | Heart rate in bpm (null if not yet analyzed) |
+| sessions[].respiratory_rate | float or null | Respiratory rate in rpm (null if not yet analyzed) |
+| sessions[].hrv | float or null | Heart rate variability (null if not yet analyzed) |
+| sessions[].risk_score | float or null | Risk score 0-100 (null if not yet calculated) |
+| sessions[].risk_tier | string or null | Risk tier: "LOW", "MODERATE", "HIGH", "CRITICAL" (null if not yet calculated) |
+| sessions[].total_frames | integer | Total frames processed in session |
+| sessions[].started_at | datetime | Session start timestamp (ISO 8601) |
+| sessions[].ended_at | datetime or null | Session end timestamp (ISO 8601), null if still processing |
+
+**Responses:**
+
+| Status | Description |
+|--------|-------------|
+| 200 | Sessions retrieved successfully |
+| 401 | Invalid or missing authentication token |
+| 500 | Server error |
+
+**Error Examples:**
+
+Unauthorized (401):
+```json
+{
+  "detail": "Could not validate credentials"
+}
+```
+
+---
 
 ### POST /api/scans/{session_id}/checklist - Submit Danger Sign Checklist
 

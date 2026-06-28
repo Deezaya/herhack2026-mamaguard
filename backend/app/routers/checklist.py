@@ -13,6 +13,52 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/scans", tags=["scans"])
 
 
+@router.get("")
+async def get_all_sessions(
+    current_user: User = Depends(get_current_user_dependency),
+    db: Session = Depends(get_db)
+):
+    """
+    Get all scan sessions for the authenticated user.
+    
+    Returns list of all scan sessions with vital signs and risk scores.
+    """
+    try:
+        # Fetch all sessions for current user, ordered by most recent first
+        sessions = db.query(ScanSession).filter(
+            ScanSession.user_id == current_user.id
+        ).order_by(ScanSession.started_at.desc()).all()
+        
+        # Format response
+        sessions_list = []
+        for session in sessions:
+            session_data = {
+                "id": session.id,
+                "status": session.status,
+                "heart_rate": session.heart_rate,
+                "respiratory_rate": getattr(session, 'respiratory_rate', None),
+                "hrv": session.hrv,
+                "risk_score": session.risk_score,
+                "risk_tier": session.risk_tier.name if session.risk_tier else None,
+                "total_frames": session.total_frames,
+                "started_at": session.started_at.isoformat() if session.started_at else None,
+                "ended_at": session.ended_at.isoformat() if session.ended_at else None,
+            }
+            sessions_list.append(session_data)
+        
+        return {
+            "count": len(sessions_list),
+            "sessions": sessions_list
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to fetch sessions for user {current_user.id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch sessions"
+        )
+
+
 @router.post("/{session_id}/checklist")
 async def submit_checklist(
     session_id: str,

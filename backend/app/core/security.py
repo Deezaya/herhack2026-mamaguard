@@ -16,12 +16,14 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 def hash_password(password: str) -> str:
     """Hash a password using bcrypt"""
-    return pwd_context.hash(password)
+    truncated = password.encode('utf-8')[:72]
+    return pwd_context.hash(truncated)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a password against its hash"""
-    return pwd_context.verify(plain_password, hashed_password)
+    truncated = plain_password.encode('utf-8')[:72]
+    return pwd_context.verify(truncated, hashed_password)
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:

@@ -14,7 +14,8 @@
 4. [API Endpoints](#api-endpoints)
    - [Health Check](#health-check)
    - [Authentication](#authentication-endpoints)
-   - [Streaming & Vitals](#streaming--vitals-endpoints)
+   - [Video Analysis](#video-analysis-endpoints) ⭐ **NEW - RECOMMENDED**
+   - [Streaming & Vitals](#streaming--vitals-endpoints) (deprecated)
    - [Checklist & Risk Assessment](#checklist--risk-assessment-endpoints)
    - [Hospitals](#hospitals-endpoints)
 5. [Data Models](#data-models)
@@ -24,19 +25,35 @@
 
 ## Overview
 
-MamaGuard is a real-time vital signs monitoring system designed for postpartum mothers. The backend provides APIs for:
+MamaGuard is a vital signs monitoring system designed for postpartum mothers. The backend provides APIs for:
 
 - **User Authentication**: Register and login for mothers
-- **Real-time Streaming**: Process camera frames to extract vitals (heart rate, respiratory rate)
+- **Video-Based Scanning** ⭐ **NEW**: Record a video and extract vitals (heart rate, respiratory rate)
 - **Risk Assessment**: Two-layer risk scoring combining vitals and danger sign checklists
 - **Location Services**: Find nearby hospitals in case of emergencies
 
 ### Key Features
 
+- **Simple Video Upload**: Record a 15-second (or custom duration) video and upload for analysis
+- **Frame Aggregation**: Processes all frames from the video and aggregates results using median values
+- **Confidence Scores**: Returns confidence metrics for each vital sign measurement
 - **Layer 1 Risk Assessment**: Based on rPPG (remote photoplethysmography) vitals
 - **Layer 2 Risk Assessment**: Based on danger sign checklist responses
 - **Transparent Risk Scoring**: Audit logs showing why a risk tier was assigned
-- **Real-time Processing**: Frame-by-frame processing with confidence scores
+
+### Recommended Workflow
+
+1. **Register/Login** → Authenticate user
+2. **Complete Onboarding** → Submit health information (gestational history, risk factors, emergency contact)
+3. **Record Video** → User records 15-second video (frontend controls duration)
+4. **Analyze Video** → Upload video to `/api/vitallens/analyze-video` endpoint ⭐ **NEW**
+5. **Submit Checklist** → Report any danger signs observed
+6. **Get Risk Score** → Receive comprehensive risk assessment with recommendations
+
+### API Changes
+
+- ✅ **NEW**: [Video Analysis Endpoint](#video-analysis-endpoints) - Simplified video upload model
+- 🔄 **Deprecated**: Real-time streaming endpoints (still available for backward compatibility, but not recommended)
 
 ---
 
@@ -639,7 +656,108 @@ Update error (500):
 
 ---
 
+## Video Analysis Endpoints
+
+### ⭐ NEW: Video Analysis for Vital Signs
+
+> **📌 Recommended Approach**: Use the video analysis API instead of real-time streaming for better stability and simpler implementation.
+
+**For comprehensive video analysis documentation, see [VIDEO_ANALYSIS_API.md](./VIDEO_ANALYSIS_API.md)**
+
+#### POST /api/vitallens/analyze-video - Analyze Video for Vitals
+
+Upload a recorded video to extract vital signs (heart rate and respiratory rate).
+
+**URL:** `/api/vitallens/analyze-video`
+
+**Method:** `POST`
+
+**Authentication:** Required (Bearer Token)
+
+**Request Body:**
+```json
+{
+  "video": "base64_encoded_video_data_here",
+  "format": "mp4"
+}
+```
+
+**Request Parameters:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| video | string | Yes | Base64-encoded video file data |
+| format | string | No | Video format (default: "mp4"). Informational only. |
+
+**Response (200) - Success:**
+```json
+{
+  "session_id": "550e8400-e29b-41d4-a716-446655440000",
+  "heart_rate": 78.5,
+  "heart_rate_confidence": 0.92,
+  "respiratory_rate": 18.2,
+  "respiratory_rate_confidence": 0.85,
+  "total_frames": 450,
+  "valid_frames": 420,
+  "duration_seconds": 15.0,
+  "status": "completed",
+  "message": "Video analysis complete. Submit checklist to calculate risk score."
+}
+```
+
+**Responses:**
+
+| Status | Description |
+|--------|-------------|
+| 200 | Video analyzed successfully, vitals extracted |
+| 400 | Invalid video data or corrupted file |
+| 401 | Invalid or missing authentication token |
+| 500 | Video processing error |
+
+**Error Examples:**
+
+Invalid video (400):
+```json
+{
+  "detail": "Video analysis failed: No frames extracted from video"
+}
+```
+
+**Key Advantages:**
+
+- ✅ Simple: One request with base64 video
+- ✅ Stable: Aggregates results from all frames (median values)
+- ✅ No streaming complexity: No real-time frame buffering needed
+- ✅ Frontend-controlled duration: User decides when to stop recording
+- ✅ Better vitals quality: More frames = more stable measurements
+
+**Typical Workflow:**
+
+1. Frontend records 15-second video (or custom duration)
+2. Frontend converts video to base64
+3. Frontend sends to `POST /api/vitallens/analyze-video`
+4. Backend processes all frames and returns vitals
+5. Frontend displays vitals and prompts for checklist
+6. User submits checklist via `POST /api/scans/{session_id}/checklist`
+7. Backend calculates risk score and returns assessment
+
+**Next Steps After Video Analysis:**
+
+After receiving vitals, the workflow continues with:
+
+```
+GET /api/scans/{session_id}/checklist          # Get checklist questions
+POST /api/scans/{session_id}/checklist          # Submit danger sign responses
+GET /api/scans/{session_id}/risk-score          # Get calculated risk tier
+GET /api/scans/{session_id}/summary             # Get full assessment
+```
+
+---
+
 ## Streaming & Vitals Endpoints
+
+⚠️ **DEPRECATED**: These endpoints are still functional but not recommended. Use [Video Analysis](#video-analysis-endpoints) instead.
+
 
 ### POST /api/vitallens/stream/start - Start Streaming Session
 

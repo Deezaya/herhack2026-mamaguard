@@ -10,7 +10,11 @@ class UserBase(BaseModel):
 
 
 class UserRegister(UserBase):
-    password: str = Field(min_length=8, description="Password must be at least 8 characters")
+    password: str = Field(
+        min_length=8,
+        max_length=72,
+        description="Password must be 8-72 characters (bcrypt limit is 72 bytes)"
+    )
     gestational_history: Optional[dict] = Field(default=None, description="Clinical history")
     known_risk_factors: Optional[dict] = Field(default=None, description="Known risk factors")
     emergency_contact_name: Optional[str] = None

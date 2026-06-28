@@ -72,7 +72,7 @@ async def analyze_video(
             raise ValueError("VitalLens not initialized")
         
         # 6. Process frames through VitalLens
-        vitals = VideoProcessor.process_frames_through_vitallens(frames, vitallens)
+        vitals = VideoProcessor.process_frames_through_vitallens(frames, vitallens, fps=fps)
         
         # 7. Create ScanSession with vitals
         session_id = str(uuid.uuid4())

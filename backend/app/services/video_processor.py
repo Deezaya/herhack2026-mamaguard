@@ -109,14 +109,16 @@ class VideoProcessor:
     @staticmethod
     def process_frames_through_vitallens(
         frames: List[np.ndarray],
-        vitallens_instance
+        vitallens_instance,
+        fps: float = 10.0
     ) -> Dict:
         """
         Process all frames through VitalLens to extract vital signs.
         
         Args:
-            frames: List of numpy arrays (RGB images)
+            frames: List of numpy arrays (RGB images, 40x40)
             vitallens_instance: Initialized VitalLens instance
+            fps: Frames per second of the video (used for temporal analysis)
             
         Returns:
             Dictionary with aggregated heart_rate, respiratory_rate, and confidence scores
@@ -124,67 +126,54 @@ class VideoProcessor:
         if not vitallens_instance:
             raise ValueError("VitalLens instance not initialized")
         
-        heart_rates = []
-        respiratory_rates = []
-        hr_confidences = []
-        rr_confidences = []
+        if len(frames) == 0:
+            raise ValueError("No frames to process")
         
         try:
-            for idx, frame in enumerate(frames):
-                try:
-                    # Convert to bytes if needed
-                    if isinstance(frame, np.ndarray):
-                        frame_bytes = frame.tobytes()
-                    else:
-                        frame_bytes = frame
-                    
-                    # Process frame through VitalLens
-                    result = vitallens_instance.process_frame(frame_bytes)
-                    
-                    if result:
-                        if 'heart_rate' in result and result['heart_rate'] is not None:
-                            heart_rates.append(result['heart_rate'])
-                            if 'heart_rate_confidence' in result:
-                                hr_confidences.append(result['heart_rate_confidence'])
-                        
-                        if 'respiratory_rate' in result and result['respiratory_rate'] is not None:
-                            respiratory_rates.append(result['respiratory_rate'])
-                            if 'respiratory_rate_confidence' in result:
-                                rr_confidences.append(result['respiratory_rate_confidence'])
-                
-                except Exception as e:
-                    logger.warning(f"Error processing frame {idx}: {e}")
-                    continue
+            # Convert list of frames to numpy array: (num_frames, 40, 40, 3)
+            frames_array = np.array(frames, dtype=np.uint8)
             
-            # Aggregate results
-            if heart_rates:
-                # Use median for stability against outliers
-                aggregated_hr = float(np.median(heart_rates))
-                aggregated_hr_confidence = float(np.mean(hr_confidences)) if hr_confidences else 0.0
-            else:
-                aggregated_hr = None
-                aggregated_hr_confidence = 0.0
+            logger.info(f"Processing {len(frames)} frames through VitalLens (fps={fps})")
             
-            if respiratory_rates:
-                aggregated_rr = float(np.median(respiratory_rates))
-                aggregated_rr_confidence = float(np.mean(rr_confidences)) if rr_confidences else 0.0
-            else:
-                aggregated_rr = None
-                aggregated_rr_confidence = 0.0
+            # Call VitalLens directly on batch of frames
+            results = vitallens_instance(frames_array, fps=fps)
+            
+            # Extract vitals from first (and only) result
+            if not results or len(results) == 0:
+                logger.warning("VitalLens returned no results")
+                return {
+                    "heart_rate": None,
+                    "heart_rate_confidence": 0.0,
+                    "respiratory_rate": None,
+                    "respiratory_rate_confidence": 0.0,
+                    "frames_processed": len(frames),
+                    "valid_frames": 0
+                }
+            
+            vitals_data = results[0].get("vitals", {})
+            
+            # Extract heart rate and confidence
+            hr_info = vitals_data.get("heart_rate", {})
+            heart_rate = hr_info.get("value") if isinstance(hr_info, dict) else hr_info
+            hr_confidence = hr_info.get("confidence", 0.0) if isinstance(hr_info, dict) else 0.0
+            
+            # Extract respiratory rate and confidence
+            rr_info = vitals_data.get("respiratory_rate", {})
+            respiratory_rate = rr_info.get("value") if isinstance(rr_info, dict) else rr_info
+            rr_confidence = rr_info.get("confidence", 0.0) if isinstance(rr_info, dict) else 0.0
             
             logger.info(
-                f"Processed {len(frames)} frames. "
-                f"HR: {aggregated_hr} (confidence: {aggregated_hr_confidence}), "
-                f"RR: {aggregated_rr} (confidence: {aggregated_rr_confidence})"
+                f"VitalLens results - HR: {heart_rate} (confidence: {hr_confidence}), "
+                f"RR: {respiratory_rate} (confidence: {rr_confidence})"
             )
             
             return {
-                "heart_rate": aggregated_hr,
-                "heart_rate_confidence": aggregated_hr_confidence,
-                "respiratory_rate": aggregated_rr,
-                "respiratory_rate_confidence": aggregated_rr_confidence,
+                "heart_rate": heart_rate,
+                "heart_rate_confidence": float(hr_confidence) if hr_confidence else 0.0,
+                "respiratory_rate": respiratory_rate,
+                "respiratory_rate_confidence": float(rr_confidence) if rr_confidence else 0.0,
                 "frames_processed": len(frames),
-                "valid_frames": len(heart_rates)  # Frames with valid HR readings
+                "valid_frames": len(frames)
             }
             
         except Exception as e:

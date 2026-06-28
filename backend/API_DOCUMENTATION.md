@@ -136,7 +136,7 @@ Get detailed health information of the API and services.
 
 ### POST /auth/register - Register New Mother
 
-Create a new user account for a postpartum mother.
+Create a new user account for a postpartum mother. Returns JWT token for immediate access. Health information is collected later via the onboarding endpoint.
 
 **URL:** `/auth/register`
 
@@ -150,18 +150,7 @@ Create a new user account for a postpartum mother.
   "email": "mother@example.com",
   "name": "Jane Doe",
   "phone": "+1234567890",
-  "password": "SecurePassword123",
-  "gestational_history": {
-    "pregnancies": 2,
-    "previous_complications": false
-  },
-  "known_risk_factors": {
-    "hypertension": false,
-    "diabetes": false,
-    "preeclampsia_history": false
-  },
-  "emergency_contact_name": "John Doe",
-  "emergency_contact_phone": "+1987654321"
+  "password": "SecurePassword123"
 }
 ```
 
@@ -172,11 +161,7 @@ Create a new user account for a postpartum mother.
 | email | string (email) | Yes | User's email address (unique) |
 | name | string | Yes | Full name of the mother |
 | phone | string | Yes | Contact phone number |
-| password | string | Yes | Password (minimum 8 characters) |
-| gestational_history | object | No | Clinical history information |
-| known_risk_factors | object | No | Pre-existing risk factors (hypertension, diabetes, etc.) |
-| emergency_contact_name | string | No | Emergency contact person's name |
-| emergency_contact_phone | string | No | Emergency contact person's phone |
+| password | string | Yes | Password (8-72 characters, bcrypt limit is 72 bytes) |
 
 **Response (200) - Success:**
 ```json
@@ -322,6 +307,86 @@ Invalid token (401):
 ```json
 {
   "detail": "Could not validate credentials"
+}
+```
+
+---
+
+### PUT /auth/profile - Update User Profile (Onboarding)
+
+Update user profile with clinical history and emergency contact information. Called during the onboarding process after registration.
+
+**URL:** `/auth/profile`
+
+**Method:** `PUT`
+
+**Authentication:** Required (Bearer Token)
+
+**Headers:**
+```
+Authorization: Bearer <access_token>
+```
+
+**Request Body:**
+```json
+{
+  "gestational_history": {
+    "pregnancies": 2,
+    "previous_complications": false
+  },
+  "known_risk_factors": {
+    "hypertension": false,
+    "diabetes": false,
+    "preeclampsia_history": false
+  },
+  "emergency_contact_name": "John Doe",
+  "emergency_contact_phone": "+1987654321"
+}
+```
+
+**Request Parameters:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| gestational_history | object | No | Clinical history information (e.g., pregnancies, previous complications) |
+| known_risk_factors | object | No | Pre-existing risk factors (hypertension, diabetes, preeclampsia, etc.) |
+| emergency_contact_name | string | No | Emergency contact person's name |
+| emergency_contact_phone | string | No | Emergency contact person's phone number |
+
+**Response (200) - Success:**
+```json
+{
+  "id": 1,
+  "email": "mother@example.com",
+  "name": "Jane Doe",
+  "phone": "+1234567890",
+  "is_active": true,
+  "created_at": "2026-06-27T10:30:00Z"
+}
+```
+
+**Responses:**
+
+| Status | Description |
+|--------|-------------|
+| 200 | Profile updated successfully |
+| 400 | Invalid input data |
+| 401 | Invalid or missing authentication token |
+| 500 | Server error during update |
+
+**Error Examples:**
+
+Invalid token (401):
+```json
+{
+  "detail": "Could not validate credentials"
+}
+```
+
+Update error (500):
+```json
+{
+  "detail": "Profile update failed"
 }
 ```
 
@@ -1003,11 +1068,60 @@ Invalid radius (400):
 
 ## Example Workflows
 
-### Complete Vital Signs Scanning Workflow
+### Complete User Registration & Vital Signs Scanning Workflow
 
 ```
-1. Register/Login
-   POST /auth/register or POST /auth/login
+1. Register (Create Account)
+   POST /auth/register
+   {
+     "email": "mother@example.com",
+     "name": "Jane Doe",
+     "phone": "+1234567890",
+     "password": "SecurePassword123"
+   }
+   → Receive access_token
+
+2. Onboarding (Update Health Information)
+   PUT /auth/profile
+   Headers: Authorization: Bearer <token>
+   {
+     "gestational_history": {"pregnancies": 2},
+     "known_risk_factors": {"hypertension": false},
+     "emergency_contact_name": "John Doe",
+     "emergency_contact_phone": "+1987654321"
+   }
+   → Profile updated with clinical history
+
+3. Start Streaming Session
+   POST /api/vitallens/stream/start
+   → Receive session_id
+
+4. Process Frames (repeat for each camera frame)
+   POST /api/vitallens/stream/process-frame
+   → Get real-time heart rate & respiratory rate
+
+5. Submit Danger Sign Checklist
+   POST /api/scans/{session_id}/checklist
+   → Get risk_tier and risk_score
+
+6. Get Complete Risk Assessment
+   GET /api/scans/{session_id}/risk-score
+   → Get detailed risk analysis with recommendations
+
+7. Get Full Scan Summary
+   GET /api/scans/{session_id}/summary
+   → Get all results combined
+```
+
+### Login & Vital Signs Scanning Workflow (Returning User)
+
+```
+1. Login
+   POST /auth/login
+   {
+     "email": "mother@example.com",
+     "password": "SecurePassword123"
+   }
    → Receive access_token
 
 2. Start Streaming Session
@@ -1025,10 +1139,6 @@ Invalid radius (400):
 5. Get Complete Risk Assessment
    GET /api/scans/{session_id}/risk-score
    → Get detailed risk analysis with recommendations
-
-6. Get Full Scan Summary
-   GET /api/scans/{session_id}/summary
-   → Get all results combined
 ```
 
 ### Emergency Hospital Lookup Workflow

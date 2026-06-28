@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.security import hash_password, verify_password, create_access_token, ACCESS_TOKEN_EXPIRE_MINUTES
 from app.models.models import User
-from app.schemas.auth import UserRegister, UserLogin, TokenResponse, UserResponse
+from app.schemas.auth import UserRegister, UserLogin, TokenResponse, UserResponse, UserProfileUpdate
 from datetime import timedelta
 import logging
 
@@ -37,10 +37,6 @@ async def register(user_data: UserRegister, db: Session = Depends(get_db)):
             name=user_data.name,
             phone=user_data.phone,
             password_hash=hash_password(user_data.password),
-            gestational_history=user_data.gestational_history,
-            known_risk_factors=user_data.known_risk_factors,
-            emergency_contact_name=user_data.emergency_contact_name,
-            emergency_contact_phone=user_data.emergency_contact_phone,
         )
         
         db.add(db_user)
@@ -140,3 +136,41 @@ async def get_current_user(
 ):
     """Get current authenticated user's profile"""
     return UserResponse.from_orm(current_user)
+
+
+@router.put("/profile", response_model=UserResponse)
+async def update_profile(
+    profile_data: UserProfileUpdate,
+    current_user: User = Depends(get_current_user_dependency),
+    db: Session = Depends(get_db),
+):
+    """
+    Update user profile with clinical history and emergency contact (onboarding).
+    
+    This endpoint is called after registration to collect health and emergency information.
+    """
+    try:
+        # Update user fields
+        if profile_data.gestational_history is not None:
+            current_user.gestational_history = profile_data.gestational_history
+        if profile_data.known_risk_factors is not None:
+            current_user.known_risk_factors = profile_data.known_risk_factors
+        if profile_data.emergency_contact_name is not None:
+            current_user.emergency_contact_name = profile_data.emergency_contact_name
+        if profile_data.emergency_contact_phone is not None:
+            current_user.emergency_contact_phone = profile_data.emergency_contact_phone
+        
+        db.commit()
+        db.refresh(current_user)
+        
+        logger.info(f"User profile updated: {current_user.email}")
+        
+        return UserResponse.from_orm(current_user)
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Profile update error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Profile update failed"
+        )

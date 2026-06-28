@@ -15,10 +15,6 @@ class UserRegister(UserBase):
         max_length=72,
         description="Password must be 8-72 characters (bcrypt limit is 72 bytes)"
     )
-    gestational_history: Optional[dict] = Field(default=None, description="Clinical history")
-    known_risk_factors: Optional[dict] = Field(default=None, description="Known risk factors")
-    emergency_contact_name: Optional[str] = None
-    emergency_contact_phone: Optional[str] = None
 
 
 class UserLogin(BaseModel):
@@ -33,6 +29,14 @@ class UserResponse(UserBase):
 
     class Config:
         from_attributes = True
+
+
+class UserProfileUpdate(BaseModel):
+    """Update user profile with clinical history and emergency contact"""
+    gestational_history: Optional[dict] = Field(default=None, description="Clinical history")
+    known_risk_factors: Optional[dict] = Field(default=None, description="Known risk factors")
+    emergency_contact_name: Optional[str] = None
+    emergency_contact_phone: Optional[str] = None
 
 
 class TokenResponse(BaseModel):

@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, status, Depends
-from fastapi.security import HTTPBearer
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.security import hash_password, verify_password, create_access_token, ACCESS_TOKEN_EXPIRE_MINUTES
@@ -103,7 +103,7 @@ async def login(credentials: UserLogin, db: Session = Depends(get_db)):
 
 
 async def get_current_user_dependency(
-    token: str = Depends(oauth2_scheme),
+    credentials: HTTPAuthorizationCredentials = Depends(oauth2_scheme),
     db: Session = Depends(get_db)
 ) -> User:
     """Dependency to get current authenticated user from JWT token"""
@@ -116,6 +116,8 @@ async def get_current_user_dependency(
     )
 
     try:
+        # Extract token from credentials object
+        token = credentials.credentials
         payload = decode_token(token)
         user_id: str = payload.get("sub")
         if user_id is None:

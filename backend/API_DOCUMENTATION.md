@@ -64,6 +64,253 @@ Default token expiration: Configured via `ACCESS_TOKEN_EXPIRE_MINUTES` (typicall
 
 ---
 
+## Frontend Authorization Guide
+
+### Step-by-Step Implementation
+
+#### 1. After Registration/Login - Store Token
+
+```javascript
+// After POST /auth/register or POST /auth/login
+const response = await fetch('/auth/register', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    email: 'mother@example.com',
+    name: 'Jane Doe',
+    phone: '+1234567890',
+    password: 'SecurePassword123'
+  })
+});
+
+const data = await response.json();
+const accessToken = data.access_token;
+
+// Store token in localStorage or sessionStorage
+localStorage.setItem('access_token', accessToken);
+localStorage.setItem('user_id', data.user.id);
+localStorage.setItem('user_email', data.user.email);
+```
+
+#### 2. Include Token in API Requests
+
+**Always add this header to protected endpoints:**
+
+```javascript
+const token = localStorage.getItem('access_token');
+
+const headers = {
+  'Content-Type': 'application/json',
+  'Authorization': `Bearer ${token}`  // ← CRITICAL: Must be "Bearer <token>"
+};
+
+// Example: Updating user profile
+const response = await fetch('/auth/profile', {
+  method: 'PUT',
+  headers: headers,
+  body: JSON.stringify({
+    gestational_history: { pregnancies: 2 },
+    known_risk_factors: { hypertension: false },
+    emergency_contact_name: 'John Doe',
+    emergency_contact_phone: '+1987654321'
+  })
+});
+```
+
+#### 3. Handle 401 Unauthorized Errors
+
+```javascript
+async function apiRequest(url, options = {}) {
+  const token = localStorage.getItem('access_token');
+  
+  const headers = {
+    'Content-Type': 'application/json',
+    ...options.headers,
+  };
+  
+  // Only add Authorization header if token exists
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  
+  let response = await fetch(url, {
+    ...options,
+    headers
+  });
+  
+  // If 401, token expired - force re-login
+  if (response.status === 401) {
+    // Clear stored token
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('user_id');
+    
+    // Redirect to login page
+    window.location.href = '/login';
+    throw new Error('Session expired. Please login again.');
+  }
+  
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'API request failed');
+  }
+  
+  return response.json();
+}
+```
+
+#### 4. Protected Endpoints That Need Token
+
+All these endpoints require `Authorization: Bearer <token>` header:
+
+- ✅ `PUT /auth/profile` - Update onboarding info
+- ✅ `GET /auth/me` - Get current user profile
+- ✅ `POST /api/vitallens/stream/start` - Start scanning
+- ✅ `POST /api/scans/{session_id}/checklist` - Submit checklist
+- ✅ `GET /api/scans/{session_id}/risk-score` - Get risk assessment
+- ✅ `GET /api/scans/{session_id}/summary` - Get scan summary
+
+#### 5. Unprotected Endpoints (No Token Needed)
+
+These endpoints do NOT require authorization:
+
+- ❌ `POST /auth/register` - Create account
+- ❌ `POST /auth/login` - Login
+- ❌ `GET /` - Health check
+- ❌ `GET /health` - Detailed health check
+- ❌ `POST /api/vitallens/stream/process-frame` - Process frame (uses session_id)
+- ❌ `GET /api/vitallens/stream/status/{session_id}` - Get stream status
+- ❌ `POST /api/vitallens/stream/stop` - Stop stream
+- ❌ `GET /api/vitallens/stream/health` - Streaming health
+- ❌ `GET /hospitals/nearby` - Find hospitals
+
+### Common Authorization Errors
+
+#### Error: "Could not validate credentials" (401)
+
+**Cause:** Token is missing, invalid, or expired
+
+**Solutions:**
+1. Check token is being stored: `console.log(localStorage.getItem('access_token'))`
+2. Verify Authorization header format: `Authorization: Bearer <token>` (with space!)
+3. Check token hasn't expired (default 24 hours)
+4. User should re-login to get fresh token
+
+**Debug code:**
+```javascript
+// Check what's in localStorage
+console.log('Token:', localStorage.getItem('access_token'));
+console.log('User ID:', localStorage.getItem('user_id'));
+
+// Make test request and log response
+const token = localStorage.getItem('access_token');
+console.log('Authorization header:', `Bearer ${token}`);
+```
+
+#### Error: "Email already registered" (400)
+
+**Cause:** Account already exists with that email
+
+**Solution:** Use login instead of register, or use different email
+
+#### Error: "User account is inactive" (403)
+
+**Cause:** Account was deactivated
+
+**Solution:** Contact support or create new account
+
+### TypeScript Example (Next.js/React)
+
+```typescript
+// utils/apiService.ts
+export class ApiService {
+  private static BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
+  static async request<T>(
+    endpoint: string,
+    options: RequestInit = {}
+  ): Promise<T> {
+    const token = localStorage.getItem('access_token');
+    
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    };
+
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(`${this.BASE_URL}${endpoint}`, {
+      ...options,
+      headers,
+    });
+
+    if (response.status === 401) {
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('user_id');
+      window.location.href = '/login';
+      throw new Error('Unauthorized: Please login again');
+    }
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.detail || `API error: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
+  static async register(email: string, name: string, phone: string, password: string) {
+    return this.request('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({ email, name, phone, password }),
+    });
+  }
+
+  static async login(email: string, password: string) {
+    return this.request('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    });
+  }
+
+  static async updateProfile(gestationalHistory: any, knownRiskFactors: any, emergencyContactName: string, emergencyContactPhone: string) {
+    return this.request('/auth/profile', {
+      method: 'PUT',
+      body: JSON.stringify({
+        gestational_history: gestationalHistory,
+        known_risk_factors: knownRiskFactors,
+        emergency_contact_name: emergencyContactName,
+        emergency_contact_phone: emergencyContactPhone,
+      }),
+    });
+  }
+
+  static async startScan(processSignals: boolean = true, model?: string) {
+    return this.request('/api/vitallens/stream/start', {
+      method: 'POST',
+      body: JSON.stringify({ process_signals: processSignals, model }),
+    });
+  }
+}
+
+// Usage in React component:
+async function handleStartScan() {
+  try {
+    const session = await ApiService.startScan();
+    console.log('Scan started:', session.session_id);
+  } catch (error) {
+    console.error('Scan error:', error.message);
+    if (error.message.includes('Unauthorized')) {
+      // Token expired, redirect to login
+      window.location.href = '/login';
+    }
+  }
+}
+```
+
+---
+
 ## Error Handling
 
 All errors follow a consistent format:
